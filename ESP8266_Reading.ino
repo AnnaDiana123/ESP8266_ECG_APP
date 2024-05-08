@@ -1,3 +1,9 @@
+#include <WiFiManager.h>
+#include <strings_en.h>
+#include <wm_consts_en.h>
+#include <wm_strings_en.h>
+#include <wm_strings_es.h>
+
 #include <ESP8266WiFi.h>
 #include <WiFiClient.h>
 #include <ESP8266HTTPClient.h>
@@ -5,20 +11,19 @@
 #include <WiFiUdp.h>
 
 //secret information
-const char* ssid = "Delya";
-const char* password = "delya1985";
-const char* serverUrl = "http://192.168.1.11:5000/post-data";
+const char* ssid = "DIGI_42efb8";
+const char* password = "5932bd10";
+const char* serverUrl = "http://192.168.1.7:5000/post-data";
 
 const int LOPlusPin = D1; //LO+ connected to D1
 const int LOMinusPin = D2; //LO- connected to D2
 
 
 //global variables 
-const int batchSize = 1000;
+const int batchSize = 5000;
 int readIndex = 0;
-const char* eqID = "ESP8266-02";
-String ecgValuesJson;
-String timeValuesJson;
+const char* eqID = "ESP8266-01";
+String jsonString;
 String timestamp;
 
 
@@ -30,8 +35,6 @@ HTTPClient http;
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP, "pool.ntp.org");
 
-//variables for syncing the time
-unsigned long syncMillis;
 
 void setup() {
   Serial.begin(115200);
@@ -48,8 +51,6 @@ void setup() {
 
   // Initialize a NTPClient to get time
   timeClient.begin();
- 
-  timeClient.setTimeOffset(10800); //Romania is GTM + 3 => 3*3600 = 3*1hour
 
   //the first time it gets information takes longer
   timeClient.update();
@@ -57,17 +58,15 @@ void setup() {
 
 void loop() {
   int ecgValue;
-  unsigned long timeValue;
+
   if (WiFi.status() == WL_CONNECTED) {
 
     if (readIndex >= batchSize) {
 
            
-      ecgValuesJson +="]";
-      timeValuesJson +="]";
+      jsonString +="]}";
 
-      Serial.println(timeValuesJson);
-      Serial.println(ecgValuesJson);
+      Serial.println(jsonString);
 
       sendEcgData();
 
@@ -79,23 +78,23 @@ void loop() {
 
       if(readIndex==0){
         timestamp=syncDateAndTime();
-        ecgValuesJson="[";
-        timeValuesJson="[";
+        Serial.println(timestamp);
+        //initialize json String
+        jsonString="{\"initialTimestamp\": \"" + timestamp + "\",";
+        jsonString += "\"eqID\": \"" + String(eqID) + "\",";
+        jsonString += "\"ecgValues\": [";
       
       }
       else{
-        ecgValuesJson += ",";
-        timeValuesJson += ",";
+        jsonString += ",";
       }
       
-      timeValue=millis()-syncMillis;
       ecgValue=readEcg();
 
-      ecgValuesJson += String(ecgValue);
-      timeValuesJson += String(timeValue);
+      jsonString += String(ecgValue);
 
       readIndex++;
-      delay(30);
+      delay(10);
 
     }
   }
@@ -108,29 +107,10 @@ String syncDateAndTime(){
   // returns an unsigned long with the epoch time (number of seconds that have elapsed since January 1, 1970 (midnight GMT);
   time_t epochTime = timeClient.getEpochTime();
 
-  //Get a time structure
-  struct tm *ptm = gmtime ((time_t *)&epochTime); 
+  // Convert to milliseconds (if needed)
+  unsigned long long epochTimeMs = epochTime * 1000 + millis() % 1000;
 
-  int day = ptm->tm_mday;
-
-  //tm_mon starts at 0, we add 1 to the month so that January corresponds to 1
-  int month = ptm->tm_mon+1;
-
-  //we need to add 1900 because the tm_year saves the number of years after 1900
-  int year = ptm->tm_year+1900;
-
-    int hour = ptm->tm_hour;
-    int minute = ptm->tm_min;
-    int second = ptm->tm_sec;
-
-    // Update syncMillis with the current millis() to keep track of the time since last sync
-    syncMillis = millis();
-
-    // Format the timestamp as "YYYYMMDD HH:MM:SS"
-    char timestamp[20]; 
-    sprintf(timestamp, "%04d-%02d-%02d %02d:%02d:%02d", year, month, day, hour, minute, second);
-
-    return String(timestamp);
+  return String(epochTimeMs);
 }
 
 
@@ -152,19 +132,12 @@ int readEcg() {
 
 
 void sendEcgData() {
-  //make the final Json Structure
-    String json = "{\"initialTimestamp\": \"" + timestamp + "\",";
-    json += "\"eqID\": \"" + String(eqID) + "\",";
-    json += "\"ecgValues\": " + ecgValuesJson + ",";
-    json += "\"elapsedTimeValues\": " + timeValuesJson;
-    json += "}";
-
 
   http.begin(wifiClient, serverUrl); // Initialize HTTPClient
   http.addHeader("Content-Type", "application/json");
 
-  int httpResponseCode = http.POST(json); // Send the JSON string
-  Serial.println(json);
+  int httpResponseCode = http.POST(jsonString); // Send the JSON string
+
   if (httpResponseCode != 200) {
     Serial.println("Error code: " + String(httpResponseCode));
    

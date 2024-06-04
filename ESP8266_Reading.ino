@@ -1,23 +1,10 @@
 #include <WiFiManager.h>
-#include <strings_en.h>
-#include <wm_consts_en.h>
-#include <wm_strings_en.h>
-#include <wm_strings_es.h>
-
-#include <ESP8266WiFi.h>
-#include <WiFiClient.h>
 #include <ESP8266HTTPClient.h>
 #include <NTPClient.h>
-#include <WiFiUdp.h>
 
-//secret information
-const char* ssid = "DIGI_42efb8";
-const char* password = "5932bd10";
-const char* serverUrl = "http://192.168.1.7:5000/post-data";
 
 const int LOPlusPin = D1; //LO+ connected to D1
 const int LOMinusPin = D2; //LO- connected to D2
-
 
 //global variables 
 const int batchSize = 5000;
@@ -25,7 +12,6 @@ int readIndex = 0;
 const char* eqID = "ESP8266-01";
 String jsonString;
 String timestamp;
-
 
 //http server
 WiFiClient wifiClient;
@@ -38,32 +24,25 @@ NTPClient timeClient(ntpUDP, "pool.ntp.org");
 
 void setup() {
   Serial.begin(115200);
-  pinMode(A0, INPUT); //Output connected to A0
   pinMode(LOPlusPin, INPUT);
   pinMode(LOMinusPin, INPUT);
 
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500); // If WiFi cannot be established, pause
-    Serial.print(".");
-  }
-  Serial.println("\nConnected to WiFi");
+  //establish wifi connection
+  connectToWiFi();
 
-  // Initialize a NTPClient to get time
+
+  //initialize a NTPClient to get time
   timeClient.begin();
 
-  //the first time it gets information takes longer
+  //the first time it gets the time it takes longer
   timeClient.update();
 }
 
 void loop() {
-  int ecgValue;
-
+  //if it is connected to wifi
   if (WiFi.status() == WL_CONNECTED) {
-
     if (readIndex >= batchSize) {
-
-           
+      //end json string
       jsonString +="]}";
 
       Serial.println(jsonString);
@@ -74,11 +53,11 @@ void loop() {
       readIndex = 0;
     }
     else{
-
-
       if(readIndex==0){
+        //sync with ntp server to get time
         timestamp=syncDateAndTime();
         Serial.println(timestamp);
+
         //initialize json String
         jsonString="{\"initialTimestamp\": \"" + timestamp + "\",";
         jsonString += "\"eqID\": \"" + String(eqID) + "\",";
@@ -89,15 +68,33 @@ void loop() {
         jsonString += ",";
       }
       
-      ecgValue=readEcg();
+      int ecgValue=readEcg();
 
       jsonString += String(ecgValue);
 
       readIndex++;
+      //add 10 milliseconds delay, the reading frequenzy is 100Hz
       delay(10);
-
     }
   }
+  else{
+    //try reconnecting to wifi
+    connectToWiFi();
+  }
+}
+
+void connectToWiFi(){
+  //WiFiManager, Local intialization, once the wifi is connected, there is no need to keep it around
+  WiFiManager wm;
+
+  //set timeout in seconds, it will try to connect to previous wifi libraries for 1 min
+  wm.setConfigPortalTimeout(60); 
+
+  if (! wm.autoConnect("AutoConnectAP","password")) {
+    Serial.println("Failed to connect to WiFi. Opening configuration portal.");
+  }
+
+  Serial.println("Connected to WiFi");
 }
 
 //this function syncs the date and time and also return the timestamp
@@ -107,7 +104,7 @@ String syncDateAndTime(){
   // returns an unsigned long with the epoch time (number of seconds that have elapsed since January 1, 1970 (midnight GMT);
   time_t epochTime = timeClient.getEpochTime();
 
-  // Convert to milliseconds (if needed)
+  // Convert to milliseconds and sync with internal millis()
   unsigned long long epochTimeMs = epochTime * 1000 + millis() % 1000;
 
   return String(epochTimeMs);
@@ -117,10 +114,11 @@ String syncDateAndTime(){
 int readEcg() {
   int ecgValue;
 
-  if (digitalRead(LOPlusPin) == HIGH || digitalRead(LOMinusPin) == HIGH) {
+  if (digitalRead(LOPlusPin) == HIGH || digitalRead(LOMinusPin) == HIGH) { // if patches are not connected
     Serial.println("Lead off detected!");
     ecgValue=-1;
   } else {
+    //read ecg value
     ecgValue = analogRead(A0);
   }
 
@@ -128,21 +126,21 @@ int readEcg() {
 }
 
 
-
-
-
 void sendEcgData() {
-
-  http.begin(wifiClient, serverUrl); // Initialize HTTPClient
+  String serverUrl = "http://192.168.1.11:5000/post-data";
+  Serial.println(serverUrl);
+  //initialize HTTPClient
+  http.begin(wifiClient, serverUrl); 
   http.addHeader("Content-Type", "application/json");
 
-  int httpResponseCode = http.POST(jsonString); // Send the JSON string
+  //send the JSON string
+  int httpResponseCode = http.POST(jsonString); 
 
   if (httpResponseCode != 200) {
     Serial.println("Error code: " + String(httpResponseCode));
    
-    delay(5000); // Delay for error
+    delay(5000); //delay for error
   }
 
-  http.end(); // Close connection
+  http.end(); //close connection
 }

@@ -7,9 +7,9 @@ const int LOPlusPin = D1; //LO+ connected to D1
 const int LOMinusPin = D2; //LO- connected to D2
 
 //global variables 
+const char* eqID = "ESP8266-01";
 const int batchSize = 5000;
 int readIndex = 0;
-const char* eqID = "ESP8266-01";
 String jsonString;
 String timestamp;
 
@@ -23,13 +23,13 @@ NTPClient timeClient(ntpUDP, "pool.ntp.org");
 
 
 void setup() {
+
   Serial.begin(115200);
   pinMode(LOPlusPin, INPUT);
   pinMode(LOMinusPin, INPUT);
 
   //establish wifi connection
   connectToWiFi();
-
 
   //initialize a NTPClient to get time
   timeClient.begin();
@@ -77,7 +77,7 @@ void loop() {
       delay(10);
     }
   }
-  else{
+  else{ //if it is not connected to wifi
     //try reconnecting to wifi
     connectToWiFi();
   }
@@ -90,7 +90,8 @@ void connectToWiFi(){
   //set timeout in seconds, it will try to connect to previous wifi libraries for 1 min
   wm.setConfigPortalTimeout(60); 
 
-  if (! wm.autoConnect("AutoConnectAP","password")) {
+  //after 1 min it will open congiguration portal
+  if (! wm.autoConnect("ECGDevice","ESP8266")) {
     Serial.println("Failed to connect to WiFi. Opening configuration portal.");
   }
 

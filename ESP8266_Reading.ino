@@ -87,11 +87,12 @@ void connectToWiFi(){
   //WiFiManager, Local intialization, once the wifi is connected, there is no need to keep it around
   WiFiManager wm;
 
+
   //set timeout in seconds, it will try to connect to previous wifi libraries for 1 min
   wm.setConfigPortalTimeout(60); 
 
   //after 1 min it will open congiguration portal
-  if (! wm.autoConnect("ECGDevice","ESP8266")) {
+  if (! wm.autoConnect("ECGDeviceAP","ESP8266*")) {
     Serial.println("Failed to connect to WiFi. Opening configuration portal.");
   }
 
